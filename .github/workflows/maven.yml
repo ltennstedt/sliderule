@@ -1,0 +1,79 @@
+---
+name: Java CI with Maven
+"on":
+  push:
+    branches:
+    - main
+    paths-ignore:
+    - .gitignore
+    - LICENSE
+    - '**/*.md'
+  pull_request:
+    branches:
+    - main
+    paths-ignore:
+    - .gitignore
+    - LICENSE
+    - '**/*.md'
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: "${{ steps.deployment.outputs.page_url }}"
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: |
+          17
+          21
+        distribution: liberica
+        cache: maven
+    - name: Enforce
+      run: mvn -B -P ci toolchains:select-jdk-toolchain enforcer:enforce
+    - name: Clean
+      run: mvn -B -P ci toolchains:select-jdk-toolchain clean:clean
+    - name: Compile
+      run: mvn -B -P ci toolchains:select-jdk-toolchain resources:resources compiler:compile
+        resources:testResources compiler:testCompile gplus:compileTests
+    - name: Test
+      run: mvn -B -P ci toolchains:select-jdk-toolchain surefire:test
+    - name: Package
+      run: mvn -B -P ci toolchains:select-jdk-toolchain jar:jar javadoc:jar source:jar-no-fork
+    - name: Verify
+      run: mvn -B -P ci toolchains:select-jdk-toolchain flatten:flatten pomchecker:check-maven-central
+        antrun:run
+    - name: Install
+      run: mvn -B -P ci toolchains:select-jdk-toolchain jar:jar javadoc:jar source:jar-no-fork
+        install:install
+    - name: Enforce
+      env:
+        GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+      run: mvn -B -P ci toolchains:select-jdk-toolchain jar:jar javadoc:jar source:jar-no-fork
+        deploy:deploy
+    - name: Site
+      run: mvn -B -P ci toolchains:select-jdk-toolchain site:site
+    - name: Sonar
+      env:
+        SONAR_TOKEN: "${{ secrets.SONAR_TOKEN }}"
+      run: mvn -B -P ci toolchains:select-jdk-toolchain sonar:sonar
+    - name: Prepare GitHub Pages
+      run: scripts/pages.sh
+    - name: Configure GitHub Pages
+      uses: actions/configure-pages@v5
+    - name: Upload for GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: pages/
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
